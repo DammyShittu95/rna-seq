@@ -1,0 +1,528 @@
+---
+title: "Count-based RNA-seq analysis - pre-processing"
+output: pdf
+date: '2022-07-26'
+caption: Bioconductor in R_wk3_wk4;
+https://lashlock.github.io/compbio/R_presentation.html
+---
+
+
+RNA-seq data is often analysed by creating a count matrix of gene counts per sample from a dataset/ SummarisedExperiment containing counts and annotation data
+![illustrates SummarisedExperiment](SummarizedExperiment_image.png)
+      ###alter order and language
+  - 1. Quality assess and clean raw sequencing data
+  - 2. Align reads to a reference
+  - 3. Count number of reads assigned to each contig/gene
+  - 4. Extract counts and store in a matrix
+  - 5. Create column metadata table
+  - 6. Analyze count data using DESeq2 or edgeR
+
+
+
+File-types - 
+     # counts - very large; can be generated after using DESeq2 package 
+     # colData - returns or contains a dataframe containing phenotypic annotations about samples and its values (ie sample name, cell, treatment etc.)
+     # results - differential gene expression analysis of samples being analysed; tries to answer hypothesis uses gene id (ie ensemble id) as row names and contains numerical info for each transcript;
+     # samples - sample info;
+     # genes - gene info (symbols, names, ids, p-values etc.)
+
+
+
+
+  DESeq2 vs edgeR
+    - two most popular methods of DEGs analysis
+    - core assumption is every gene’s read counts follow the negative binomial distribution under one condition (therefore normalises raw read counts according to their own set of logic; another method assumes Poisson distribution and  may be used when there is only one replicate per condition)
+    - not recommended for large-sample analysis
+    - edgeR more rigorous error rate control? but DESeq is easier/ quicker?
+    - can adj. p-value to alter whether a gene is significant
+
+```{r}
+#Input data for DEseq2 consists of non-normalized sequence read counts that has been summarised at either the gene or transcript/ exon level (ie feature level)
+BiocManager::install(c("DESeq2", "edgeR", "ggplot2"))
+library(DESeq2)
+library(edgeR)
+library(ggplot2)
+```
+
+
+Going back to airways data, we see how many reads match a particular feature
+```{r}
+library(airway)
+data(airway) #load 'airways' dataset in the form of a SummarisedExperiment
+airway
+```
+
+We can access GRanges List & other GRanges features
+```{r}
+granges(airway) #shows ranges
+#OR
+rowRanges(airway) #retrieves the range of each row (a gene ie exon)
+
+names(rowRanges(airway)) #obtains gene names
+
+sum(elementNROWS(rowRanges(airway))) #check total no. of exons
+##shows that for 64k genes (airways # of features), we have 750k exons
+
+start(airway) #gives start coordinates in a list
+
+#to check for genes within a certain genomic interval 
+gr1 = GRanges("1", range = IRanges(start = 1, end = 10^6)) #first create interval to be observed
+gr1
+subsetByOverlaps(airway, gr1) #then identify overlapping regions
+```
+
+When selecting features and a a way to count the number of overlaps, must decide what to do with overlaps with a gene with multiple different transcripts:
+  - interested in exons all belonging to gene transcripts
+  OR...
+  - interested in exons belonging to one transcript
+```{r}
+#N.B.
+#BiocManager::install("Rsubread")
+#library(Rsubread)
+#first map reads from SAM/BAM file format to ref. genome
+
+#then use function: featureCounts("BAMfile-xyz", allowMultiOverlap=F, countMultiMappingReads=T) #assigns and counts mapped reads to specific genomic coordinates and features i.e genes, exons, promoters & genomic bins
+
+#allowMultiOverlap - indicates if reads are assigned to more than one feature if overlapping more than one feature
+#countMultiMappingReads - indicates if multi-mapping reads/fragments should be counted, TRUE by default
+```
+
+
+
+The matrix contains integer counts inside the features indicating the level of expression
+```{r}
+head(assay(airway)) 
+#or
+head(assay(airway, "counts")) #observe data and creates a counts matrix to visualise rna-seq count data
+```
+
+We can observe data's phenotype/ covariance info about samples
+```{r}
+colData(airway) #returns a capital df containing phenotypic annotations about samples and its values
+names(colData(airway)) #returns the phenotype names only
+metadata(airway) #looks up generic misc. data
+
+```
+
+
+To check samples and features we use:
+```{r}
+colnames(airway) #gives sample names instead of using sampleNames() function like in ExpressionSets
+head(rownames(airway)) # or names() gives gene names instead of using featureNames() function
+```
+
+Reference level of factor is the first level, in this case it's treated w dexamethasone 
+  - since untreated should be the reference when analysing data, we now change it to this
+```{r}
+#colData(airway)
+airway$dex #the dex covariant is the variable of interest w two levels, untreated vs treated group
+airway$dex <- relevel(airway$dex, "untrt") #change reference to untreated level
+airway$dex # to confirm change
+```
+
+
+
+
+                edgeR vs DESeq2
+'edgeR'
+   - fits a statistical model similarly to 'limma' #there's also TEC2 from another research group     - both models based on binomial distribution
+  - difference is how they estimate variability in the data and how model is implemented
+
+Has a number of package-specific containers but cannot be used on summarised experiments therefore the data is converted it into a limma class which in turn converts it into an edgeR data class, DGEList
+  - add samples (x: columns) & features/genes (y: rows)
+```{r}
+library(edgeR)
+
+countsmatrix1 <- assay(airway)
+
+dge1 <- DGEList(countsmatrix1, group = airway$dex) #constructs the DGEList from a counts matrix while grouping according to treatment/ condition
+
+```
+
+When observing DGEList, only counts is seen despite also containing sample info, therefore we merge the samples log with colData to get the phenotype/annotation? data
+    - add samples (x: columns) with colData
+    - add features/genes (y: rows)
+```{r}
+dge1 #only counts seen
+
+head(dge1$counts)
+head(dge1$samples) #this also contains group/ treatment, library size & normalisation factors
+
+#ADD SAMPLES FIRST
+dge1$samples <- merge(dge1$samples, colData(airway), by=0) #adds other metadata info to samples using colData; by=0 OR row.names() merges dataframes according to the row names ie genes
+head(dge1$samples) #check change
+
+
+#NOW ADD GENES
+rowRanges(airway)
+names(rowRanges(airway)) #OR names(granges(airway)) views gene names
+
+dge1$genes <- data.frame(names = names(rowRanges(airway))) #creates genes variable using data.frame() function to add gene info and save as a dataframe
+head(dge1$genes) #check
+
+dge1 #shows parts of DGEList
+
+```
+
+
+estimate effective library sizes or normalization factors (to shows how different datasets need to be scaled up/down to have the same effective library size)
+  - `norm.factors` close in value = samples have been sequenced to similar depths
+```{r}
+dge1.1 <- calcNormFactors(dge1) 
+dge1.1 #there is a change in norm.factors column from calculations
+
+```
+
+
+Estimate dispersion of variability (variance) of a negative binomial distributed data, dge1.x, shows the spread of the discrete, ie expression levels, of all genes for each sample
+This is done by:
+  - setting up a design matrix for the two comparative groups; untrt. vs trt
+  - set dispersion parameter: set to assuming dispersion is the same for all genes
+ 
+```{r}
+design3 <- model.matrix(~dge1.1$samples$group) #create design matrix for the two comparative groups; untrt. vs trt for the model where the second column shows which sample is in the second (treated) group
+design3 #shows 2 columns describing model parameters (intercept: avg. gene expr. for a specified gene across the airway samples, shows difference in gene expr. between untrt. vs trt - in this case 0 means no difference in expression); we have already ensured that untreated is the reference level
+
+
+dge1.2 <- estimateGLMCommonDisp(dge1.1, design3, method="CoxReid") #estimates common dispersion which assumes dispersion for all genes are the same which is unrealistic therefore it then estimates checkwise dispersion for DGE datasets
+dge1.2
+
+dge1.3 <- estimateGLMTrendedDisp(dge1.2, design3)
+dge1.3
+
+dge1.4 <- estimateGLMTagwiseDisp(dge1.3, design3, trend=T) #estimates empirical bayes tagwise/genewise dispersion for DGE datasets
+dge1.4
+```
+
+ 
+No we fit the model to the data
+```{r}
+glmfit1 <- glmFit(dge1.4, design3) #fits a genewise negative binomial GLM (ie fits a model to the counts for each gene)
+glmfit1
+```
+
+Now identify logFC, p-values, coefficients, contrast of interest, significant genes etc.
+```{r}
+lrtfit1 <- glmLRT(glmfit1, coef=ncol(glmfit1$design)) #fits another genewise GLM while using a coefficent of 2, uses the second coefficient (treated) to represent the differences between untrt vs. trt
+lrtfit1
+
+topTags(lrtfit1) #obtains top DEGs (differentially expressed genes or 'tags') between control vs untrt vs. trt
+```
+
+
+
+DESeq2 
+    - DEG analysis fits counts to the negative binomial distribution model to estimate dispersion
+    - input data: non-normalised read counts summarised at either gene or transcript/ exon level (ie feature level)
+    
+    N.B. accurately model read counts requires accurate estimates of variation between replicates of the same sample group (trt or untrt) for each gene
+      - only a few (3-6) replicates per group makes variation estimate unreliable (due to the large differences in dispersion for genes with similar means)
+      - therefore, DESeq2 shares info across genes to generate more accurate estimates based on the mean expression using a the ‘shrinkage’ method; assuming genes w similar expression have similar dispersion
+![shrinkage method?](deseq_theory.png)
+
+  
+  - first create design matrix for the comparative groups; untrt. vs trt
+  - then create DESeqDataSet object by putting data into package-specific container
+ 
+```{r}
+design3 <- model.matrix(~dge1.1$samples$group) #create design matrix for the model
+
+design3 #shows 2 columns describing model parameters (intercept: avg. gene expr. for a specified gene across the airway samples, shows difference in gene expr. between untrt. vs trt - in this case 0 means untreated (no diff. in expr?) and 1 indicates which sample is in the second, treated, group); we have already ensured that untreated is the reference level
+
+deseqds1 <- DESeqDataSet(airway, design3) # converts a datset's summarised experiment and creates a DESeqDataSet object; is a subclass of RangedSummarizedEx and stores input values, calculations and results of DEGs
+deseqds1 #confirms subclass
+
+#can also create DESeqDataSet from 'design3' matrix using:
+#countsmatrix1 <- assay(airway)
+#deseqdsm1 <- DESeqDataSetFromMatrix(
+                  # countData=countsmatrix1,
+                  # colData=colData(airway),
+                  # design=design3)
+
+
+deseqds1.model <- DESeq(deseqds1) #fits model on data container, deseqds1, via default analysis to estimate calculations
+res1 <- results(deseqds1.model)
+res1
+
+
+results.final <- res1[order(res1$padj),] #sort according to p-value to have top DEGs according to DESeq2
+results.final
+
+resultsNames(results.final) # lists the coefficients
+
+summary(results.final) #produces result summaries of various model fitting functions while visualising top DEG genes
+```
+
+(2) data visualization and statistical analysis;
+(3) validation and interpretation
+
+```{r}
+#plot normalised counts for each single gene to compare trt vs untrt
+plotCounts(deseqds1.model, gene = "ENSG00000152583", intgroup="dex")
+plotCounts(deseqds1.model, gene = "ENSG00000179094", intgroup="dex")
+plotCounts(deseqds1.model, gene = "ENSG00000116584", intgroup="dex") #etc.
+
+
+#-----additional plots------ or go to RNAvisualisation.R script
+#create V-plot 
+#Volcano Plots: type of scatter plots showing log fold change (log2FoldChange) x axis vs.  inverse log of a p-value (corrected for multiple hypothesis testing (padj)) --> -log10(padj)
+ggplot(as.data.frame(results.final), aes(x = log2FoldChange, y=-log10(padj))) +
+  geom_point()
+
+# inverse log of p<05 is '-log10(0.05)'; add horizontal line to observe no. of significant genes (or plot points)
+ggplot(as.data.frame(results.final), aes(x = log2FoldChange, y=-log10(padj), colour = padj)) + #colour points along a gradient
+  geom_point() +
+  geom_hline(yintercept= -log10(0.05), linetype=2, colour = "black")
+
+
+# create plot to allow colour to show significant genes:
+# `aes(color = ifelse( padj < 0.05, "p < 0.05", "NS"))`. This essentially  called and gives each factor a color different color on the plot.
+ggplot(as.data.frame(results.final), 
+       aes(x = log2FoldChange, y=-log10(padj), colour = padj)) +
+  geom_point(aes(colour = ifelse(padj < 0.05, "p < 0.05", "NS"))) + #create two factors, "p < 0.05" and "NS", and gives each a different colour
+  geom_hline(yintercept= -log10(0.05), linetype=2) #select line type
+
+# clean plot; move legend to bottom, add titles, captions etc.
+airwaygenesplot <- ggplot(as.data.frame(results.final), 
+       aes(x = log2FoldChange, y=-log10(padj), colour = padj)) +
+  geom_point(aes(colour = ifelse(padj < 0.05, "p < 0.05", "NS"))) + 
+  geom_hline(yintercept= -log10(0.05), linetype=2) +
+  geom_vline(xintercept= c(-0.5, 0.5), linetype=2) +
+  # theme(legend.position = "bottom") +
+  labs(color = "adjusted P.Val", 
+       title = "Expression of genes in airways' samples", 
+       subtitle = "expr. data for untreated vs treated",
+       caption = "Volcano plot displaying log fold change (logFC) vs. inverse log of a p-value")
+
+airwaygenesplot
+```
+
+Create PCA plot
+    - quickly estimate dispersion trend by first transforming raw count data
+    - then apply variance stabilizing transformation
+    - vst: for PCA or sample clustering
+```{r}
+vsdata1 <- vst(deseqds1.model, blind=F)
+plotPCA(vsdata1, intgroup="dex")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+create plot using: https://hbctraining.github.io/DGE_workshop/lessons/04_DGE_DESeq2_analysis.html
+mean_count vs variance_counts dotplot to show dipersion spread
+
+
+
+
+
+
+
+
+arrayWeightsQuick(y, fit)
+Estimates the relative reliability of each array by measuring how well the expression values for that array follow the linear model.
+This is a quick and dirty version of arrayWeights
+
+quickBamFlagSummary()
+
+
+
+
+
+
+
+
+what is needed in wet-lab for rnaseq data --> https://towardsdatascience.com/deseq2-and-edger-should-no-longer-be-the-default-choice-for-large-sample-differential-gene-8fdf008deae9
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Descriptions of functions, names, calculations, tools etc.
+#----
+  `feature names`: gene name or SNP identifiers
+  `sample names`: names of samples, often people or tissue
+  `normalisation`: microarray (log2)
+  `colData()`: returns df containing phenotypic annotations about samples and its values
+
+  `GSEx datasets`: can be compressed idat files, expressionSets
+  `GSMxxxx`: is the GEO identifier, in microarrays it is followed by IDAT naming conventions and array identifier, R0xx.
+
+   `model.matrix()`: creates a design matrix for two or more comparative groups; ie untrt. vs trt, in preparation for a model
+     - design matrix also encodes various assumptions about how variables in X explain observed values in Y, on which the investigator decides - https://genomicsclass.github.io/book/pages/expressing_design_formula.html
+     - >=2 columns: an intercept column (of 1’s representing the population average of the first group; often control) & a second column (specifies samples in the second group representing difference between population averages of the second group and the first; the latter is typically the coefficient we are interested in when we are performing statistical tests: hypothesis tests for a difference between the two groups)
+    `~`     : tells R a formula follows
+    `factor()`: levels of factor; categorises data and stores it as levels; ie male vs female, old vs young, treated vs untreated etc.; factors are numbers that can have labels; can be un/ordered; important class for statistical analysis and plotting
+      - `ref level`: is the level which is [model?] contrasted against default is the first level alphabetically; is displayed first both when creating a factor or reading its output + second column of the model.matrix() output; sapply(df, levels) checks levels of all rows
+  
+   `norm.factors()` close in value = samples have been sequenced to similar depths
+   `exprs()`: accesses the expression and error measurements of assay data
+
+  `containers`: represents a group of raw data into boxes and has been pre-processed and represented; some functions/analyses require package-specific containers
+
+  `count matrix` : single table containing counts of all samples; rows - genes, columns - samples
+    
+  `preprocessRaw()`: do nothing
+  `preprocessIllumina()`: use Illumina’s standard processing choices
+  
+  `preprocessQuantile()`: use a version of quantile normalization adapted to methylation arrays; normalisation method suited for datasets where global differences between samples is not expected i.e. single tissue
+  
+  `preprocessNoob()`: use the NOOB background correction method
+  `preprocessSWAN()`: use the SWAN method
+  `preprocessFunnorm()`: use functional normalisation
+
+
+  `glmFit()`: fits a genewise GLM
+  `glmLRT()`: fits genewise GLM using a given coefficient (or contrast) for categorised experimental groups
+
+  `DESeqDataSet()`: 
+  `DESeqDataSetFromMatrix()`:
+  are a subclass of RangedSummarizedEx and stores input values, calculations and results of DEGs by creating and using a DESeqDataSet object from a summarised experiment dataset
+  
+  `DESeq()`: uses model matrix to estimate size factors, dispersions incl. gene-wise dispersion estimates, mean-dispersion relationship, final dispersion estimates & fitting model and testing
+  `results()`: extracts result table from DESeq analysis giving base means across samples, log2 fold changes, standard errors, test statistics, p-values and adjusted p-values...
+
+  `vst` - apply variance stabilizing transformation, e.g. for PCA or sample clustering
+
+  `which()`: returns position or index of the value which satisfies given conditions; gives position of the value in a logical vector
+  `with()`: 
+
+
+arrayWeightsQuick(y, fit)
+Estimates the relative reliability of each array by measuring how well the expression values for that array follow the linear model.
+This is a quick and dirty version of arrayWeights
+
+quickBamFlagSummary()
+
+
+
+
+  -----
+types of data:
+    `.experimental` - seq reads, line seqs, gene expr;
+    `.meta data` - sample info ie what numbers mean and origin, profile of sample ie age, ethnicity etc;
+    `.annotations data` - gives context to experiment; can contain conservation scores, near by genes, CpG content etc
+  
+  
+  
+  -----
+classes: objects and databases
+    `data.frame`: classic base R object; subset using filter()
+    `DataFrame`: a Bioconductor extension; columns can be only S4 object with length; uses in IRanges, GRanges etc.
+    `ExpressionSet`: ; subset w x[x[1:10,]] OR x[x[,1:10]] OR x[x == "hello"]
+    `SummarisedExperiment class`: a data container more modern vers. of exprSet; matrix-like.
+          rows=genes, genomic coordinates; 
+          columns=samples, cells.
+          colData=returns df containing phenotypic annotations about samples and its values
+    `colData`: data frame containing metadata about each sample, relevant experimental factors (e.g. treatment/control, cell type, tissue)
+
+   `biomaRt`: biological database interface - conglomerate of data ie ensembl, uniprot (in biomaRt; database = mart & dataset = data centre?)
+    `rgSet`: object is a RGChannelSet class representing two colour data w green-red channels; very similar to  ExpressionSet
+    `MethylSet or preprocessRaw()`: object contains only un/methylated signals and matches probes and colour channels; can use getMeth()/getUnmeth() to observe intensities matrices
+
+
+
+
+  ------
+
+#Modelling
+
+Estimating the dispersion or variance of a negative binomial distribute data shows the spread of the discrete, ie expression levels, of all genes for each sample
+  `negative binomial distibuted data` has been analysed and models/describes the probability that a number of events, ie counts or hypothesis (treated vs untreated), occurs successfully before a specified number of failures occurs using a GLM
+          example: tire factory contains 5% defectives, 4 are chosen for a car - find the probability that there are 2 defective tires before 4 good ones
+
+
+  `GLM`: a generalised linear model is added to discrete data; they calculate dispersion parameters (or measures of dispersion) such as range, variance (spread), stand. dev., coefficient of variance
+
+
+  `estimateGLMCommonDisp()`: or `checkwise dispersion` first estimates common dispersion for negative binomial GLMs/ dispersion parameter for DGE datasets; this assumes dispersion for all genes are the same (which is unrealistic)   (##therefore samples have the same number for each gene???), the checkwise dispersion is then estimated
+
+  `estimateGLMTrendedDisp`: ........... is occasioanlly required for tagwise dispersion to work
+
+  `estimateGLMTagwiseDisp()`: or `genewise (tagwise) dispersion` estimates empirical bayes tagwise dispersion to fit a negative binomial GLMs ; 
+      ##values for samples should all be different if matrix only contains integers????
+
+     
+  `preprocessFunnorm()` # functional normalisation (FunNorm) is a between-array normalisation method for the Illumina Infinium HumanMethylation450 platform; removes unwanted variation by regressing out variability explained by the control probes present on the array; particularly useful for studies comparing conditions with known large-scale differences, such as cancer/normal studies, or between-tissue studies. It has been shown that for such studies, functional normalization outperforms other existing approaches
+  
+  
+  
+  ------
+
+types of files:
+    `IDAT`: compressed files contianing RGChannelSets (similar to ExpressionSets) and results of microarrays incl. methylation
+    `BAM/SAM`: may contain un/aligned seqs, seq may be aligned to multiple locations or are spliced, reads originating from multiple samples.
+    `RNAseq data`: count data; `assayNames()` to check data/assay type
+    
+
+----Operators & accessors
+  `[]` indexes into or subsets a vector, matrix, array, list or dataframe; also used to extract specific elements from a vector or matrix
+
+  `[[]]` extracts or select element w/in a list (or table); x$y is equivalent to x[["y"]]
+
+
+  `^` represents the beginning of the string
+  `$` represents the end of the string
+  `.` stands for any character 
+  `*` defines a repetition (zero or more)
+
+  `<`	less than
+  `<=`	less than or equal to
+  `>`	greater than
+  `>=`	greater than or equal to
+  `==`	exactly equal to
+  `!=`	not equal to
+  `!x`	Not x
+  `x | y`	x OR y
+  `x & y`	x AND y
+
+
+  | Function         | Description |
+  |------------------|-------------|
+  | `log10()` | A built-in function for a log transformation
+`p-value`: probability of sampling a value as or more extreme than the test statistic if sampling from a null distribution
+
+
+
+##Additional resources & URLs:
+------------------------------------
+https://kasperdanielhansen.github.io/genbioconductor/html/minfi.html#preprocessing
+
+https://www.bioconductor.org/help/course-materials/2015/BioC2015/methylation450k.html
+
+https://lashlock.github.io/compbio/R_presentation.html
+
+https://hbctraining.github.io/DGE_workshop/lessons/04_DGE_DESeq2_analysis.html
+
+
+
+  #what is needed in wet-lab for rnaseq data --> https://towardsdatascience.com/deseq2-and-edger-should-no-longer-be-the-default-choice-for-large-sample-differential-gene-8fdf008deae9
+
+
+
+  #for more tutorials in methylation data and plots: https://genomicsclass.github.io/book/pages/inference_for_DNAmeth.html
+
+https://www.bioconductor.org/packages/devel/workflows/vignettes/methylationArrayAnalysis/inst/doc/methylationArrayAnalysis.html
+
+
+
+
