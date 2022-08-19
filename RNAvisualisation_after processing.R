@@ -1,12 +1,5 @@
 #RNA-seq workshop _ https://hackmd.io/SnorsWTbTTyRenptpjrhww?view
 
-# File-types - counts - very large; can be generated after using DESeq2 package 
-            # colData - returns or contains a dataframe containing phenotypic annotations about samples and its values (ie sample name, cell, treatment etc.)
-            # results - differential gene expression analysis of samples being analysed; tries to answer hypothesis uses gene id (ie ensemble id) as row names and contains numerical info for each transcript;
-            # samples - sample info;
-            # genes - gene info (symbols, names, ids, p-values etc.)
-
-
 install.packages("ggplot2")
 install.packages("tidyr")
 install.packages("dplyr")
@@ -17,19 +10,14 @@ library(dplyr)
 library(scales)
 library(cowplot)
 
-#Intro
-log10(0.05)
 
-pval <- 0.05
-pval
 
--log10(pval)
 
 favorite_genes <- c("BRCA1", "JUN",  "GNRH1", "TH", "AR")
 favorite_genes
 
 # 1. set wd and import rnaseq sample file
-setwd("/Users/ishittu/Library/CloudStorage/OneDrive-ImperialCollegeLondon/ImperialBits/PROJECTS (1)/BioInformatics")
+setwd("xyz")
 getwd()
 samples <- read.csv("rnaseq/data/samples.csv") #contains sample info
 
@@ -124,16 +112,6 @@ ggplot(samples, aes(x=SMCENTER, y=SMRIN)) +
 # Wrangle - Tidy and Transform Data
 # makes data more valuable and assures quality and usefulness
 
-# info/definition on process 
-#---- 
-# tidying - stores data in a consistent form:   each column is a variable, each row is an observation;     function incl. pivot_longer(), pivot_wider(), separate(), unite(), drop_na(), replace_na()
-# "lubridate" package - a no. of functions for tidying dates; mutate() convert objects from, say, characters or integers to factors & rename observations and variables
-
-# transforming - incl narrows in on observations (rows) of interest, create new variables (columns) that are functions/calculations of existing variables, calculate summary statistics (ie counts, means);     summary functions (ie summarize, count),    group variables using group_by() before summary functions;    isolate specific rows, filter(), or columns, select();        sort columns: arrange() and arrange(desc())
-# %>% operator "pipes" output of one function to the input of the other
-
-#filtering - %in% c(): filters a list;    | and & means "or" or "and"
-#---- 
 
 # 7. identify approved names and symbols of differentially expressed genes (DEGs) by filtering by adjusted p-values<0.05 then further filtered by fold-change if needed (ie too many results to handle; too many with small fold-changes)
 # subset both results and genes files
@@ -258,7 +236,8 @@ final_counts_DEG_plot
 
 
 
-# >>>>>>>>.<<<<<<<<        >>>>>>>>.<<<<<<<<         >>>>>>>>.<<<<<<<<         >>>>>>>>.<<<<<<<<
+
+
 
 
 
@@ -349,20 +328,6 @@ plot_grid(muscle_20_50_plot3, heart_20_50_plot2) #more DEGs in the muscle > hear
   
 
 
-
-
-### Additional Resources
-#----
-- [RStudio cheatsheet for readr](https://raw.githubusercontent.com/rstudio/cheatsheets/master/data-import.pdf)
-- [RStudio cheatsheet for dplyr](https://raw.githubusercontent.com/rstudio/cheatsheets/master/data-transformation.pdf)
-- [RStudio cheatsheet for data Wrangling with dplyr](https://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf)
-- [ggplot point shapes](http://www.sthda.com/english/wiki/ggplot2-point-shapes)
-- [Angus 2019 Intro to R Lesson](https://angus.readthedocs.io/en/2019/R_Intro_Lesson.html)
-- [Angus 2019 Differential Gene Expression in R Lesson](https://angus.readthedocs.io/en/2019/diff-ex-and-viz.html)
-- [Software Carpentry R Lesson](http://swcarpentry.github.io/r-novice-inflammation/)
-
-#----
-
 ### Descriptions of functions
 #----
   | Function         | Description |
@@ -409,6 +374,5 @@ plot_grid(muscle_20_50_plot3, heart_20_50_plot2) #more DEGs in the muscle > hear
   `$` represents the end of the string
   `.` stands for any character 
   `*` defines a repetition (zero or more)
-#----
 
   
