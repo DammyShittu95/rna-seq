@@ -2,8 +2,7 @@
 title: "Count-based RNA-seq analysis - pre-processing"
 output: pdf
 date: '2022-07-26'
-caption: Bioconductor in R_wk3_wk4;
-https://lashlock.github.io/compbio/R_presentation.html
+caption: https://lashlock.github.io/compbio/R_presentation.html
 ---
 
 
@@ -318,37 +317,6 @@ plotPCA(vsdata1, intgroup="dex")
 
 
 
-create plot using: https://hbctraining.github.io/DGE_workshop/lessons/04_DGE_DESeq2_analysis.html
-mean_count vs variance_counts dotplot to show dipersion spread
-
-
-
-
-
-
-
-
-arrayWeightsQuick(y, fit)
-Estimates the relative reliability of each array by measuring how well the expression values for that array follow the linear model.
-This is a quick and dirty version of arrayWeights
-
-quickBamFlagSummary()
-
-
-
-
-
-
-
-
-what is needed in wet-lab for rnaseq data --> https://towardsdatascience.com/deseq2-and-edger-should-no-longer-be-the-default-choice-for-large-sample-differential-gene-8fdf008deae9
-
-
-
-
-
-
-
 
 
 
@@ -366,6 +334,9 @@ what is needed in wet-lab for rnaseq data --> https://towardsdatascience.com/des
 
   `GSEx datasets`: can be compressed idat files, expressionSets
   `GSMxxxx`: is the GEO identifier, in microarrays it is followed by IDAT naming conventions and array identifier, R0xx.
+  `log10()` | A built-in function for a log transformation
+  `p-value`: probability of sampling a value as or more extreme than the test statistic if sampling from a null distribution
+
 
    `model.matrix()`: creates a design matrix for two or more comparative groups; ie untrt. vs trt, in preparation for a model
      - design matrix also encodes various assumptions about how variables in X explain observed values in Y, on which the investigator decides - https://genomicsclass.github.io/book/pages/expressing_design_formula.html
@@ -496,32 +467,6 @@ types of files:
   `x & y`	x AND y
 
 
-  | Function         | Description |
-  |------------------|-------------|
-  | `log10()` | A built-in function for a log transformation
-`p-value`: probability of sampling a value as or more extreme than the test statistic if sampling from a null distribution
-
-
-
-##Additional resources & URLs:
-------------------------------------
-https://kasperdanielhansen.github.io/genbioconductor/html/minfi.html#preprocessing
-
-https://www.bioconductor.org/help/course-materials/2015/BioC2015/methylation450k.html
-
-https://lashlock.github.io/compbio/R_presentation.html
-
-https://hbctraining.github.io/DGE_workshop/lessons/04_DGE_DESeq2_analysis.html
-
-
-
-  #what is needed in wet-lab for rnaseq data --> https://towardsdatascience.com/deseq2-and-edger-should-no-longer-be-the-default-choice-for-large-sample-differential-gene-8fdf008deae9
-
-
-
-  #for more tutorials in methylation data and plots: https://genomicsclass.github.io/book/pages/inference_for_DNAmeth.html
-
-https://www.bioconductor.org/packages/devel/workflows/vignettes/methylationArrayAnalysis/inst/doc/methylationArrayAnalysis.html
 
 
 
